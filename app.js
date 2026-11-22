@@ -15,7 +15,7 @@ const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/';
 const FOLDER = 'application/vnd.google-apps.folder';
 const SHORTCUT = 'application/vnd.google-apps.shortcut';
 const ALL = 'supportsAllDrives=true&includeItemsFromAllDrives=true';
-const VERSION = '1.2';
+const VERSION = '1.3';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -46,7 +46,7 @@ function toast(msg, ms = 2800) {
   clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), ms);
 }
 
-if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js?v=5';
+if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js?v=6';
 
 /* ---------- Stockage sur l'appareil (IndexedDB) ---------- */
 let dbP = null;
@@ -1091,6 +1091,16 @@ async function boot() {
     login(true, start);
   }
 }
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator) {
+  // Nouvelle version en ligne : l'appli se recharge d'elle-même (sauf en pleine lecture, elle attend la fin)
+  let reloadPending = false;
+  const reloadIfIdle = () => { if (VIEW === 'read') { reloadPending = true; return; } location.reload(); };
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) reloadIfIdle(); });
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+  }).catch(() => {});
+  addEventListener('popstate', () => { if (reloadPending && VIEW !== 'read') location.reload(); });
+}
 boot();
 })();
