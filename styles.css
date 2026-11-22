@@ -499,7 +499,7 @@ body.reading #toast { bottom: calc(var(--sb) + 120px); }
 #rload .spin { border-color: rgba(255, 255, 255, .15); border-top-color: #ff7a3d; }
 .chrome { position: absolute; left: 0; right: 0; z-index: 3; background: rgba(18, 18, 20, .78); -webkit-backdrop-filter: blur(24px) saturate(1.6); backdrop-filter: blur(24px) saturate(1.6);
   transition: transform .42s var(--ease), opacity .3s; }
-#rtop { top: 0; padding: calc(var(--st) + 2px) max(6px, var(--sr)) 6px max(6px, var(--sl)); display: flex; align-items: center; gap: 6px; border-bottom: .5px solid rgba(255, 255, 255, .1); }
+#rtop { top: 0; padding: calc(var(--st) + 12px) max(10px, var(--sr)) 10px max(10px, var(--sl)); display: flex; align-items: center; gap: 6px; border-bottom: .5px solid rgba(255, 255, 255, .1); }
 #rtop .rspace { width: 44px; height: 44px; flex: none; }
 #rtop .ti { flex: 1; text-align: center; overflow: hidden; }
 #rtop .ti b { display: block; font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -533,7 +533,7 @@ body.reading #toast { bottom: calc(var(--sb) + 120px); }
 #reader.bare #mini, #reader.page-mode #mini { opacity: 0; transform: translateY(12px); }
 @media (max-width: 699px) { #mini { display: none; } }
 /* Croix pour quitter la lecture : toujours là, discrète quand les commandes sont cachées */
-#rclose { position: absolute; left: max(8px, var(--sl)); top: calc(var(--st) + 2px); z-index: 5; width: 44px; height: 44px; border-radius: 22px; display: grid; place-items: center;
+#rclose { position: absolute; right: max(10px, var(--sr)); top: calc(var(--st) + 12px); z-index: 5; width: 44px; height: 44px; border-radius: 22px; display: grid; place-items: center;
   color: #fff; background: rgba(36, 36, 40, .72); -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6);
   box-shadow: 0 4px 14px rgba(0, 0, 0, .35), inset 0 0 0 .5px rgba(255, 255, 255, .12); transition: opacity .3s, transform .22s var(--ease-out), background-color .2s; }
 #rclose svg { width: 18px; height: 18px; }
