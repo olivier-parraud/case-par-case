@@ -13,7 +13,7 @@ const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/';
 const FOLDER = 'application/vnd.google-apps.folder';
 const SHORTCUT = 'application/vnd.google-apps.shortcut';
 const ALL = 'supportsAllDrives=true&includeItemsFromAllDrives=true';
-const VERSION = '2.2';
+const VERSION = '2.3';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -51,7 +51,7 @@ function setSet(k, v) { SET[k] = v; ls.set('cpc:set', SET); }
 let ROOT = ls.get('cpc:root', null) || DEFAULT_ROOT;
 const ROOT_ID = DEFAULT_ROOT.id;
 
-if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js?v=9';
+if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js?v=10';
 
 /* ---------- Stockage sur l'appareil (IndexedDB) ---------- */
 let dbP = null;

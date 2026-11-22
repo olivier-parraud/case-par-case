@@ -285,13 +285,16 @@ stage.addEventListener('wheel', (e) => {
 }, { passive: false });
 document.addEventListener('keydown', (e) => {
   if (VIEW !== 'read' || e.ctrlKey || e.metaKey || e.altKey) return;
-  if (e.target.tagName === 'INPUT' && e.key.startsWith('Arrow')) return;
+  // Flèche droite et flèche bas : toujours la case suivante, dans l'ordre de lecture choisi (BD ou manga)
   const act = {
-    ArrowRight: () => (S.rtl ? prev() : next()), ArrowLeft: () => (S.rtl ? next() : prev()),
-    ' ': next, ArrowDown: next, PageDown: next, Enter: next, ArrowUp: prev, PageUp: prev, Backspace: prev,
+    ArrowRight: next, ArrowDown: next, ' ': next, PageDown: next, Enter: next,
+    ArrowLeft: prev, ArrowUp: prev, PageUp: prev, Backspace: prev,
     Home: () => goPage(0, 'first', -1), End: () => S.src && goPage(S.src.numPages - 1, 'first', 1),
     p: () => setMode(S.mode === 'page' ? 'panel' : 'page'), m: () => setRtl(!S.rtl), f: () => (S.immersive ? exitFs() : enterFs()),
     Escape: () => (S.immersive ? exitFs() : leave())
   }[e.key.length === 1 ? e.key.toLowerCase() : e.key];
-  if (act) { e.preventDefault(); act(); }
-});
+  if (act) { e.preventDefault(); e.stopPropagation(); if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur(); act(); }
+}, true);
+// Un bouton ou le curseur des pages ne garde pas le clavier : les flèches tournent toujours les cases
+readerEl.addEventListener('click', (e) => { const b = e.target.closest('button, input'); if (b) setTimeout(() => b.blur(), 0); });
+$('#slider').addEventListener('change', (e) => e.target.blur());

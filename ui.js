@@ -755,6 +755,7 @@ function applyTheme() {
 }
 matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => { if (SET.theme === 'auto') applyTheme(); });
 const NEWS = [
+  ['2.3', 'Clavier : flèche droite et flèche bas avancent toujours à la case suivante, dans le sens de lecture choisi (BD ou manga).'],
   ['2.2', 'Découpe des cases bien plus précise : scans avec du grain, papier jauni, cases qui ne sont pas en grille, bulles qui débordent, cases sans cadre. Nouveau réglage « Découpe des cases ».'],
   ['2.1', 'Les comics viennent aussi de Wikipédia : toutes les séries dans la recherche (Spider-Man, Batman…), couvertures de la sélection comics, résumés en français. Meilleur classement Mangas / Comics. Transition plus propre vers les Réglages.'],
   ['2.0', 'Nouvelle appli : Mangas et Comics séparés, Découvrir (tendances et suggestions), Ma liste synchronisée, recherche dans les catalogues, plein écran, réglages complets, thème clair, iPad avec barre latérale repliable.'],
