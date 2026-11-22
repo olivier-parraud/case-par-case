@@ -22,7 +22,7 @@
     if (localStorage.getItem('cpc:rail') === 'true') document.documentElement.classList.add('rail-start');
   } catch (e) {} })();
 </script>
-<link rel="stylesheet" href="styles.css?v=10">
+<link rel="stylesheet" href="styles.css?v=11">
 </head>
 <body>
 
@@ -50,10 +50,11 @@
   <div id="mini" aria-hidden="true"><canvas width="1" height="1"></canvas><i></i></div>
   <button id="exitfs" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>Quitter le plein écran</button>
   <div id="rhint" role="status"></div>
+  <button id="rclose" data-act="back" aria-label="Quitter la lecture" title="Quitter la lecture">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>
+  </button>
   <header id="rtop" class="chrome">
-    <button class="ricon" data-act="back" aria-label="Fermer le tome">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
-    </button>
+    <span class="rspace" aria-hidden="true"></span>
     <div class="ti"><b id="rTitle"></b><small id="rSeries"></small></div>
     <div class="tools">
       <div class="seg sm wide-only" id="rModeTop" role="group" aria-label="Mode de lecture"><span class="thumb"></span><button data-mode="panel">Case par case</button><button data-mode="page">Page entière</button></div>
@@ -77,12 +78,12 @@
 
 <div id="toast" role="status" aria-live="polite"></div>
 
-<script src="vendor/pdf.min.js?v=10"></script>
-<script src="vendor/jszip.min.js?v=10"></script>
-<script src="core.js?v=10"></script>
-<script src="panels.js?v=10"></script>
-<script src="reader.js?v=10"></script>
-<script src="catalog.js?v=10"></script>
-<script src="ui.js?v=10"></script>
+<script src="vendor/pdf.min.js?v=11"></script>
+<script src="vendor/jszip.min.js?v=11"></script>
+<script src="core.js?v=11"></script>
+<script src="panels.js?v=11"></script>
+<script src="reader.js?v=11"></script>
+<script src="catalog.js?v=11"></script>
+<script src="ui.js?v=11"></script>
 </body>
 </html>
