@@ -1,17 +1,17 @@
 /* Case par Case : garde l'appli disponible hors ligne. Les tomes eux-mêmes sont gardés par l'appli (IndexedDB). */
-const VERSION = 'cpc-v3';
+const VERSION = 'cpc-v4';
 const SHELL = [
   './',
   'index.html',
-  'app.js?v=3',
+  'app.js?v=4',
   'manifest.webmanifest',
   'icons/icon-180.png',
   'icons/icon-192.png',
   'icons/icon-512.png',
   'icons/favicon.png',
-  'vendor/pdf.min.js?v=3',
-  'vendor/pdf.worker.min.js?v=3',
-  'vendor/jszip.min.js?v=3',
+  'vendor/pdf.min.js?v=4',
+  'vendor/pdf.worker.min.js?v=4',
+  'vendor/jszip.min.js?v=4',
   'vendor/libarchive/src/libarchive.js',
   'vendor/libarchive/src/compressed-file.js',
   'vendor/libarchive/dist/worker-bundle.js',

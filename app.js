@@ -13,7 +13,9 @@ const REDIRECT = location.href.startsWith(PROD) ? PROD : location.origin + locat
 const DRIVE = 'https://www.googleapis.com/drive/v3/';
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/';
 const FOLDER = 'application/vnd.google-apps.folder';
-const VERSION = '1.0';
+const SHORTCUT = 'application/vnd.google-apps.shortcut';
+const ALL = 'supportsAllDrives=true&includeItemsFromAllDrives=true';
+const VERSION = '1.1';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -44,7 +46,7 @@ function toast(msg, ms = 2800) {
   clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), ms);
 }
 
-if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js?v=3';
+if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js?v=4';
 
 /* ---------- Stockage sur l'appareil (IndexedDB) ---------- */
 let dbP = null;
@@ -140,10 +142,12 @@ async function listChildren(id) {
   const out = []; let pt = '';
   do {
     const q = encodeURIComponent(`'${id}' in parents and trashed=false`);
-    const j = await (await api(`files?q=${q}&fields=nextPageToken,files(id,name,mimeType,size,thumbnailLink)&pageSize=1000${pt ? '&pageToken=' + pt : ''}`)).json();
+    const j = await (await api(`files?q=${q}&fields=nextPageToken,files(id,name,mimeType,size,thumbnailLink,shortcutDetails(targetId,targetMimeType))&pageSize=1000&${ALL}${pt ? '&pageToken=' + pt : ''}`)).json();
     out.push(...(j.files || [])); pt = j.nextPageToken || '';
   } while (pt);
-  return out;
+  // Un raccourci (par exemple vers un dossier partagé depuis un autre compte) est suivi jusqu'à sa cible
+  return out.map((f) => f.mimeType === SHORTCUT && f.shortcutDetails
+    ? { id: f.shortcutDetails.targetId, name: f.name, mimeType: f.shortcutDetails.targetMimeType, size: 0, thumbnailLink: '' } : f);
 }
 async function fetchMe() {
   try {
@@ -152,7 +156,7 @@ async function fetchMe() {
   } catch (e) {}
 }
 async function fetchBlob(id, size, onp, signal) {
-  const r = await api(`files/${id}?alt=media`, { signal });
+  const r = await api(`files/${id}?alt=media&supportsAllDrives=true`, { signal });
   const total = +size || +r.headers.get('content-length') || 0;
   if (!r.body || !total) { const b = await r.blob(); onp(1); return b; }
   const rd = r.body.getReader(), chunks = []; let got = 0;
