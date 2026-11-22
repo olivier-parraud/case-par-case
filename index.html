@@ -122,6 +122,8 @@ h2 { font: 700 22px/1.2 var(--display); letter-spacing: -.01em; margin: 26px 0 1
 .tome .cov span::before { height: 2px; }
 .tome .tx { display: grid; gap: 5px; }
 .tome .t { font-weight: 600; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tome .t .sub { font-weight: 400; color: var(--muted); }
+.tome .t .sub::before { content: "· "; }
 .tome .s { color: var(--muted); font-size: 13px; }
 .tome .bar { max-width: 220px; }
 .dl { width: 44px; height: 44px; border-radius: 22px; display: grid; place-items: center; color: var(--accent); position: relative; }
@@ -256,8 +258,8 @@ h2 { font: 700 22px/1.2 var(--display); letter-spacing: -.01em; margin: 26px 0 1
 
 <div id="toast" role="status" aria-live="polite"></div>
 
-<script src="vendor/pdf.min.js?v=4"></script>
-<script src="vendor/jszip.min.js?v=4"></script>
-<script src="app.js?v=4"></script>
+<script src="vendor/pdf.min.js?v=5"></script>
+<script src="vendor/jszip.min.js?v=5"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>

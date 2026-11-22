@@ -15,7 +15,7 @@ const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/';
 const FOLDER = 'application/vnd.google-apps.folder';
 const SHORTCUT = 'application/vnd.google-apps.shortcut';
 const ALL = 'supportsAllDrives=true&includeItemsFromAllDrives=true';
-const VERSION = '1.1';
+const VERSION = '1.2';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -46,7 +46,7 @@ function toast(msg, ms = 2800) {
   clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), ms);
 }
 
-if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js?v=4';
+if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js?v=5';
 
 /* ---------- Stockage sur l'appareil (IndexedDB) ---------- */
 let dbP = null;
@@ -178,9 +178,43 @@ async function fetchTome(t, onp, signal) {
   return { kind: t.kind, blobs: [await fetchBlob(t.id, t.size, onp, signal)] };
 }
 
+// PDF lu directement dans le Drive, morceau par morceau (requêtes Range) : pas besoin de télécharger 200 Mo
+async function rangePdf(t) {
+  if (!window.pdfjsLib) throw new Error("Le lecteur PDF n'a pas pu se charger.");
+  let size = +t.size || 0;
+  if (!size) size = +((await (await api(`files/${t.id}?fields=size&supportsAllDrives=true`)).json()).size) || 0;
+  if (!size) throw new Error('taille');
+  const get = async (b, e, k = 0) => {
+    try {
+      const r = await api(`files/${t.id}?alt=media&supportsAllDrives=true`, { headers: { Range: `bytes=${b}-${e - 1}` } });
+      const buf = new Uint8Array(await r.arrayBuffer());
+      return r.status === 200 && buf.length === size ? buf.subarray(b, e) : buf;
+    } catch (err) {
+      if (err instanceof NeedAuth || k >= 2) throw err;
+      await sleep(800 * (k + 1)); return get(b, e, k + 1);
+    }
+  };
+  const tr = new pdfjsLib.PDFDataRangeTransport(size, await get(0, Math.min(size, 262144)));
+  tr.requestDataRange = (b, e) => { get(b, e).then((d) => tr.onDataRange(b, d)).catch((err) => { tr.failed = err; if (tr.onFail) tr.onFail(err); }); };
+  const pdf = await pdfjsLib.getDocument({ range: tr, disableAutoFetch: true, disableStream: true, rangeChunkSize: 262144, isEvalSupported: false }).promise;
+  pdf._tr = tr;
+  return pdf;
+}
+
 /* ---------- Bibliothèque ---------- */
 const kindOf = (n, mt) => (/\.pdf$/i.test(n) || mt === 'application/pdf') ? 'pdf' : /\.(cbz|zip)$/i.test(n) ? 'zip' : /\.(cbr|rar|cb7|7z)$/i.test(n) ? 'rar' : null;
 const cleanTitle = (n) => n.replace(TOME_RE, '').replace(/_+/g, ' ').replace(/\s+/g, ' ').trim();
+const seriesName = (n) => cleanTitle(n).replace(/\s*[\[(]?\b(pdf|cbz|cbr|fr|vf)\b[\])]?\s*$/i, '').trim() || cleanTitle(n);
+const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// « Invincible - Tome 01 - Affaires de famille » dans la série Invincible -> { title: « Tome 1 », sub: « Affaires de famille » }
+function tomeLabel(name, series) {
+  let n = cleanTitle(name);
+  if (series) n = n.replace(new RegExp('^' + reEsc(series) + '\\s*[-–:]?\\s*', 'i'), '');
+  const m = n.match(/^(?:tome|t\.?|vol(?:ume)?\.?|n°|#)\s*0*(\d+)\s*(?:[-–:.]\s*(.*))?$/i);
+  if (m) return { title: 'Tome ' + m[1], sub: (m[2] || '').trim() };
+  return { title: n || cleanTitle(name), sub: '' };
+}
+const fullTitle = (t) => t.title + (t.sub ? ' · ' + t.sub : '');
 let LIB = ls.get('cpc:lib', null); // { series: [{ id, title, tomes: [{ id, title, kind, size, thumb, s }] }], at }
 const TOMES = new Map();
 function indexLib() { TOMES.clear(); for (const s of (LIB && LIB.series) || []) for (const t of s.tomes) TOMES.set(t.id, t); }
@@ -195,17 +229,17 @@ async function refreshLibrary(manual) {
   try {
     const root = await listChildren(ROOT_ID);
     const series = [], loose = [];
-    const mk = (f, k) => ({ id: f.id, title: cleanTitle(f.name), kind: k, size: +f.size || 0, thumb: f.thumbnailLink || '' });
-    for (const f of root) { const k = kindOf(f.name, f.mimeType); if (k) loose.push(mk(f, k)); }
+    const mk = (f, k, series) => ({ id: f.id, ...tomeLabel(f.name, series), kind: k, size: +f.size || 0, thumb: f.thumbnailLink || '' });
+    for (const f of root) { const k = kindOf(f.name, f.mimeType); if (k) loose.push(mk(f, k, '')); }
     await pool(root.filter((f) => f.mimeType === FOLDER), 4, async (f) => {
-      const kids = await listChildren(f.id), tomes = [];
+      const kids = await listChildren(f.id), tomes = [], sname = seriesName(f.name);
       for (const k of kids) {
         const kd = kindOf(k.name, k.mimeType);
-        if (kd) tomes.push(mk(k, kd));
-        else if (k.mimeType === FOLDER) tomes.push({ id: k.id, title: cleanTitle(k.name), kind: 'dir', size: 0, thumb: '' });
+        if (kd) tomes.push({ ...mk(k, kd, sname), key: k.name });
+        else if (k.mimeType === FOLDER) tomes.push({ id: k.id, ...tomeLabel(k.name, sname), kind: 'dir', size: 0, thumb: '', key: k.name });
       }
-      if (!tomes.length && kids.some((k) => IMG_RE.test(k.name))) tomes.push({ id: f.id, title: cleanTitle(f.name), kind: 'dir', size: 0, thumb: '' });
-      if (tomes.length) { tomes.sort((a, b) => natural(a.title, b.title)); series.push({ id: f.id, title: cleanTitle(f.name), tomes }); }
+      if (!tomes.length && kids.some((k) => IMG_RE.test(k.name))) tomes.push({ id: f.id, title: sname, sub: '', kind: 'dir', size: 0, thumb: '', key: f.name });
+      if (tomes.length) { tomes.sort((a, b) => natural(a.key, b.key)); for (const t of tomes) delete t.key; series.push({ id: f.id, title: sname, tomes }); }
     });
     if (loose.length) { loose.sort((a, b) => natural(a.title, b.title)); series.push({ id: ROOT_ID, title: 'Divers', tomes: loose }); }
     series.sort((a, b) => natural(a.title, b.title));
@@ -280,6 +314,7 @@ function hydrateCovers(root) {
     const id = el.dataset.c; if (!id) continue;
     const img = $('img', el), t = TOMES.get(id);
     coverURL(id).then((u) => {
+      if (!u) wantCover(t);
       const src = u || (t && t.thumb && navigator.onLine ? t.thumb : '');
       if (!src) return;
       img.referrerPolicy = 'no-referrer';
@@ -287,6 +322,30 @@ function hydrateCovers(root) {
       img.onerror = () => { img.hidden = true; };
       img.src = src;
     });
+  }
+}
+const coverQ = [], coverTried = new Set(); let coverBusy = 0;
+function wantCover(t) {
+  if (!t || coverTried.has(t.id) || !tokenOk() || !navigator.onLine) return;
+  if (!(t.kind === 'pdf' || t.kind === 'dir')) return;
+  coverTried.add(t.id); coverQ.push(t); pumpCovers();
+}
+function pumpCovers() {
+  while (coverBusy < 2 && coverQ.length && VIEW !== 'read') {
+    const t = coverQ.shift(); coverBusy++;
+    (async () => {
+      try {
+        if (await idbGet('covers', t.id)) return;
+        if (t.kind === 'pdf') {
+          const pdf = await rangePdf(t);
+          try { await ensureCover(t, pdfSource(pdf)); } finally { try { pdf.destroy(); } catch (e) {} }
+        } else {
+          const kids = (await listChildren(t.id)).filter((k) => IMG_RE.test(k.name)).sort((a, b) => natural(a.name, b.name));
+          if (kids[0]) { const b = await fetchBlob(kids[0].id, kids[0].size, () => {}); await ensureCover(t, imageSource(1, () => Promise.resolve(b))); }
+        }
+      } catch (e) { coverTried.delete(t.id); }
+      finally { coverBusy--; pumpCovers(); }
+    })();
   }
 }
 const covering = new Set();
@@ -631,7 +690,7 @@ function next() {
   if (S.mode === 'panel' && S.panel < S.cur.list.length - 1) { S.panel++; show(true); return; }
   if (S.page < S.src.numPages - 1) { goPage(S.page + 1, 'first'); return; }
   const nt = sibling(1);
-  if (nt) { history.replaceState({ v: 'read', t: nt.id }, ''); openTome(nt.id, 'start'); toast(nt.title); }
+  if (nt) { history.replaceState({ v: 'read', t: nt.id }, ''); openTome(nt.id, 'start'); toast(fullTitle(nt)); }
   else toast('C’était le dernier tome de la série.');
 }
 function prev() {
@@ -670,13 +729,25 @@ async function openTome(id, at) {
   closeReader();
   showView('read');
   S.tome = t; S.series = seriesOf(t.s);
-  $('#rTitle').textContent = t.title; $('#rSeries').textContent = S.series ? S.series.title : '';
+  $('#rTitle').textContent = fullTitle(t); $('#rSeries').textContent = S.series ? S.series.title : '';
   showChrome(true);
   const tok = S.token;
   setRLoad('Ouverture…');
-  let data = await getLocal(id);
+  let data = await getLocal(id), src = null;
   if (tok !== S.token) return;
-  if (!data) {
+  if (!data && t.kind === 'pdf' && navigator.onLine && tokenOk()) {
+    try {
+      const pdf = await rangePdf(t);
+      if (tok !== S.token) { pdf.destroy(); return; }
+      pdf._tr.onFail = (err) => { if (err instanceof NeedAuth && S.tome === t) { toast('Session Google expirée, reconnexion…'); setTimeout(() => login(true, { v: 'read', t: id }), 800); } };
+      src = pdfSource(pdf);
+    } catch (e) {
+      if (tok !== S.token) return;
+      if (e instanceof NeedAuth) { login(false, { v: 'read', t: id }); return; }
+      src = null; // repli : téléchargement complet ci-dessous
+    }
+  }
+  if (!data && !src) {
     if (!navigator.onLine) { setRLoad(null); toast('Ce tome n’est pas sur cet appareil. Télécharge-le quand tu as du réseau.', 3600); leave(); return; }
     if (!tokenOk()) { login(false, { v: 'read', t: id }); return; }
     try {
@@ -690,9 +761,10 @@ async function openTome(id, at) {
       toast('Impossible de charger « ' + t.title + ' ».'); leave(); return;
     }
   }
-  let src;
-  try { src = await openSource(t.title, data); }
-  catch (e) { if (tok === S.token) { setRLoad(null); toast(e.message || 'Impossible d’ouvrir ce tome.'); leave(); } return; }
+  if (!src) {
+    try { src = await openSource(fullTitle(t), data); }
+    catch (e) { if (tok === S.token) { setRLoad(null); toast(e.message || 'Impossible d’ouvrir ce tome.'); leave(); } return; }
+  }
   if (tok !== S.token) { src.destroy(); return; }
   S.src = src; S.cache.clear();
   const pref = PREFS[t.s];
@@ -727,7 +799,7 @@ async function download(id, quiet) {
   } catch (e) {
     if (e && e.name === 'QuotaExceededError') toast('Plus assez de place sur cet appareil.');
     else if (e instanceof NeedAuth) toast('Reconnecte-toi à Google pour télécharger.');
-    else if (!(e && e.name === 'AbortError')) toast('Le téléchargement de « ' + t.title + ' » a échoué.');
+    else if (!(e && e.name === 'AbortError')) toast('Le téléchargement de « ' + fullTitle(t) + ' » a échoué.');
     throw e;
   } finally { DL.delete(id); paintTome(id); paintSeriesHead(); }
 }
@@ -760,7 +832,7 @@ function go(r, replace) {
   apply(r);
 }
 function apply(r) {
-  if (r.v !== 'read' && VIEW === 'read') closeReader();
+  if (r.v !== 'read' && VIEW === 'read') { closeReader(); setTimeout(pumpCovers, 500); }
   if (r.v === 'read') openTome(r.t, r.at || 'resume');
   else if (r.v === 'series') { showView('series'); renderSeries(r.s); }
   else { showView('home'); renderHome(); }
@@ -825,8 +897,7 @@ function renderHome() {
     const { t, p, label } = lr, s = seriesOf(t.s);
     const pct = p ? Math.round(100 * (p.p + 1) / p.n) : 0;
     h += '<button class="hero" data-open="' + t.id + '">' + covHTML(t, t.title) +
-      '<div><div class="k">' + label + '</div><div class="t">' + esc(t.title) + '</div><div class="s">' + esc(s ? s.title : '') +
-      (p ? ' · page ' + (p.p + 1) + ' / ' + p.n : '') + '</div>' +
+      '<div><div class="k">' + label + '</div><div class="t">' + esc((s ? s.title + ' · ' : '') + t.title) + '</div><div class="s">' + esc([t.sub, p ? 'page ' + (p.p + 1) + ' / ' + p.n : ''].filter(Boolean).join(' · ')) + '</div>' +
       (p ? '<div class="bar"><i style="width:' + pct + '%"></i></div>' : '') + '</div></button>';
   }
   if (!LIB.series.length) {
@@ -854,7 +925,7 @@ function tomeRowHTML(t) {
     : '<button class="dl ok" data-unpin="' + t.id + '" aria-label="Sur cet appareil. Toucher pour le retirer">' + ICON.ok + '</button>';
   else btn = '<button class="dl" data-dl="' + t.id + '" aria-label="Télécharger pour lire hors ligne">' + ICON.down + '</button>';
   return '<div class="tome" data-row="' + t.id + '"><button class="open" data-open="' + t.id + '">' + covHTML(t, t.title) +
-    '<span class="tx"><span class="t">' + esc(t.title) + '</span><span class="s">' + info + '</span>' +
+    '<span class="tx"><span class="t">' + esc(t.title) + (t.sub ? ' <span class="sub">' + esc(t.sub) + '</span>' : '') + '</span><span class="s">' + info + '</span>' +
     (p ? '<span class="bar' + (done ? ' done' : '') + '"><i style="width:' + pct + '%"></i></span>' : '') + '</span></button>' + btn + '</div>';
 }
 function seriesHeadActions(s) {
