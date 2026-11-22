@@ -13,7 +13,7 @@ const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/';
 const FOLDER = 'application/vnd.google-apps.folder';
 const SHORTCUT = 'application/vnd.google-apps.shortcut';
 const ALL = 'supportsAllDrives=true&includeItemsFromAllDrives=true';
-const VERSION = '2.1';
+const VERSION = '2.2';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -45,13 +45,13 @@ function toast(msg, ms = 2800) {
 }
 
 /* Réglages de l'appli, gardés sur l'appareil */
-const SET_DEFAULT = { sync: true, mode: 'panel', dirManga: 'rtl', dirComics: 'ltr', anim: true, autoFs: false, hint: true, quality: 'std', keep: 2, wifi: false, theme: 'dark', paper: 'black' };
+const SET_DEFAULT = { sync: true, mode: 'panel', dirManga: 'rtl', dirComics: 'ltr', anim: true, autoFs: false, hint: true, quality: 'std', cut: 'normal', keep: 2, wifi: false, theme: 'dark', paper: 'black' };
 const SET = { ...SET_DEFAULT, ...ls.get('cpc:set', {}) };
 function setSet(k, v) { SET[k] = v; ls.set('cpc:set', SET); }
 let ROOT = ls.get('cpc:root', null) || DEFAULT_ROOT;
 const ROOT_ID = DEFAULT_ROOT.id;
 
-if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js?v=8';
+if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js?v=9';
 
 /* ---------- Stockage sur l'appareil (IndexedDB) ---------- */
 let dbP = null;
@@ -511,107 +511,6 @@ async function openSource(title, data) {
   const src = imageSource(list.length, (i) => { const p = chain.then(() => list[i].file.extract()); chain = p.catch(() => {}); return p; });
   src.destroy = () => { try { arc._worker.terminate(); } catch (e) {} };
   return src;
-}
-
-/* ---------- Détection des cases (découpe récursive le long des gouttières) ---------- */
-function detect(cv) {
-  const W = Math.min(520, cv.width), sc = W / cv.width, H = Math.max(8, Math.round(cv.height * sc));
-  const a = document.createElement('canvas'); a.width = W; a.height = H;
-  const c = a.getContext('2d', { willReadFrequently: true });
-  c.drawImage(cv, 0, 0, W, H);
-  const d = c.getImageData(0, 0, W, H).data;
-  const L = new Uint8ClampedArray(W * H);
-  for (let i = 0, j = 0; i < L.length; i++, j += 4) L[i] = (d[j] * 77 + d[j + 1] * 150 + d[j + 2] * 29) >> 8;
-  const samp = [], bw = Math.max(2, Math.round(W * 0.012));
-  for (let y = 0; y < H; y += 2) for (let x = 0; x < bw; x++) samp.push(L[y * W + x], L[y * W + W - 1 - x]);
-  for (let x = 0; x < W; x += 2) for (let y = 0; y < bw; y++) samp.push(L[y * W + x], L[(H - 1 - y) * W + x]);
-  samp.sort((p, q) => p - q);
-  const bg = samp[samp.length >> 1], thr = 40, W1 = W + 1, N = W * H;
-  // Une planche a des gouttières blanches ou noires ; un fond coloré ou gris moyen (couverture, titre) se lit en page entière.
-  const chroma = [];
-  for (let x = 0; x < W; x += 3) for (const y of [1, H - 2]) { const j = (y * W + x) * 4; chroma.push(Math.max(d[j], d[j + 1], d[j + 2]) - Math.min(d[j], d[j + 1], d[j + 2])); }
-  for (let y = 0; y < H; y += 3) for (const x of [1, W - 2]) { const j = (y * W + x) * 4; chroma.push(Math.max(d[j], d[j + 1], d[j + 2]) - Math.min(d[j], d[j + 1], d[j + 2])); }
-  chroma.sort((p, q) => p - q);
-  if (chroma[chroma.length >> 1] > 40 || (bg > 70 && bg < 185)) return { tree: null, sc };
-  const integral = (val) => {
-    const T = new Uint32Array(W1 * (H + 1));
-    for (let y = 0; y < H; y++) { let rs = 0; const o = y * W, r0 = y * W1, r1 = (y + 1) * W1; for (let x = 0; x < W; x++) { rs += val[o + x]; T[r1 + x + 1] = T[r0 + x + 1] + rs; } }
-    return (x0, y0, x1, y1) => T[y1 * W1 + x1] - T[y0 * W1 + x1] - T[y1 * W1 + x0] + T[y0 * W1 + x0];
-  };
-  const ink = new Uint8Array(N);
-  for (let i = 0; i < N; i++) ink[i] = Math.abs(L[i] - bg) > thr ? 1 : 0;
-  const inkSum = integral(ink);
-  const outer = new Uint8Array(N), q = new Int32Array(N); let qh = 0, qt = 0;
-  const open = (x, y) => inkSum(Math.max(0, x - 1), Math.max(0, y - 1), Math.min(W, x + 2), Math.min(H, y + 2)) === 0;
-  const seed = (x, y) => { const i = y * W + x; if (!outer[i] && open(x, y)) { outer[i] = 1; q[qt++] = i; } };
-  for (let x = 0; x < W; x++) { seed(x, 0); seed(x, H - 1); }
-  for (let y = 0; y < H; y++) { seed(0, y); seed(W - 1, y); }
-  while (qh < qt) { const i = q[qh++], x = i % W, y = (i - x) / W; if (x > 0) seed(x - 1, y); if (x < W - 1) seed(x + 1, y); if (y > 0) seed(x, y - 1); if (y < H - 1) seed(x, y + 1); }
-  const mask = new Uint8Array(N);
-  for (let i = 0; i < N; i++) mask[i] = outer[i] ? 0 : 1;
-  const sum = integral(mask);
-  function trim(b) {
-    let [x0, y0, x1, y1] = b;
-    const nr = Math.max(1, (x1 - x0) * 0.01);
-    while (y0 < y1 && sum(x0, y0, x1, y0 + 1) <= nr) y0++;
-    while (y1 > y0 && sum(x0, y1 - 1, x1, y1) <= nr) y1--;
-    const nc = Math.max(1, (y1 - y0) * 0.01);
-    while (x0 < x1 && sum(x0, y0, x0 + 1, y1) <= nc) x0++;
-    while (x1 > x0 && sum(x1 - 1, y0, x1, y1) <= nc) x1--;
-    return (x1 - x0 < 4 || y1 - y0 < 4) ? null : [x0, y0, x1, y1];
-  }
-  const minGap = Math.max(2, Math.round(Math.min(W, H) * 0.005));
-  function split(b, axis, tolFrac) {
-    const [x0, y0, x1, y1] = b, h = axis === 'h';
-    const a0 = h ? y0 : x0, a1 = h ? y1 : x1, tol = Math.max(1, (h ? x1 - x0 : y1 - y0) * tolFrac);
-    const segs = []; let start = a0, run = 0;
-    for (let t = a0; t < a1; t++) {
-      const v = h ? sum(x0, t, x1, t + 1) : sum(t, y0, t + 1, y1);
-      if (v <= tol) { run++; continue; }
-      if (run >= minGap && t - run > start) { segs.push([start, t - run]); start = t; }
-      run = 0;
-    }
-    segs.push([start, a1]);
-    return segs.map(([s, e]) => h ? [x0, s, x1, e] : [s, y0, e, y1]);
-  }
-  const minW = W * 0.07, minH = H * 0.045, minA = N * 0.015, bigA = N * 0.3;
-  function cut(b, depth) {
-    b = trim(b); if (!b) return null;
-    const area = (b[2] - b[0]) * (b[3] - b[1]);
-    const tols = area > bigA ? [0.08, 0.22] : [0.08];
-    if (depth < 9) for (const tolFrac of tols) for (const axis of ['h', 'v']) {
-      const segs = split(b, axis, tolFrac);
-      if (segs.length > 1) {
-        const kids = segs.map((s) => cut(s, depth + 1)).filter(Boolean);
-        if (kids.length > 1) return { dir: axis, kids };
-        if (kids.length === 1) return kids[0];
-      }
-    }
-    const w = b[2] - b[0], hh = b[3] - b[1];
-    if (w < minW || hh < minH || w * hh < minA) return null;
-    return { rect: b, fill: sum(b[0], b[1], b[2], b[3]) / (w * hh) };
-  }
-  let tree = cut([0, 0, W, H], 0);
-  const leaves = [];
-  (function walk(n) { if (!n) return; if (n.rect) leaves.push(n); else n.kids.forEach(walk); })(tree);
-  if (leaves.length > 1) {
-    let good = 0, tot = 0;
-    for (const l of leaves) { const ar = (l.rect[2] - l.rect[0]) * (l.rect[3] - l.rect[1]); tot += ar; if (l.fill >= 0.8) good += ar; }
-    if (good / tot < 0.6) tree = null;
-  }
-  return { tree, sc };
-}
-function flatten(det, rtl, cw, ch) {
-  const out = [];
-  (function walk(n) { if (!n) return; if (n.rect) { out.push(n.rect); return; } (n.dir === 'v' && rtl ? n.kids.slice().reverse() : n.kids).forEach(walk); })(det.tree);
-  const pad = cw * 0.008;
-  let rects = out.map(([x0, y0, x1, y1]) => {
-    const X0 = Math.max(0, x0 / det.sc - pad), Y0 = Math.max(0, y0 / det.sc - pad);
-    const X1 = Math.min(cw, x1 / det.sc + pad), Y1 = Math.min(ch, y1 / det.sc + pad);
-    return { x: X0, y: Y0, w: X1 - X0, h: Y1 - Y0 };
-  });
-  if (!rects.length || rects.length > 30) rects = [{ x: 0, y: 0, w: cw, h: ch }];
-  return rects;
 }
 
 /* Petit curseur glissant des contrôles segmentés */

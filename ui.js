@@ -684,6 +684,7 @@ function segRow(k, label, opts, sub) {
   return '<div class="it stack inline"><span class="lb"><span>' + label + '</span>' + (sub ? '<small id="sub-' + k + '">' + sub + '</small>' : '') + '</span><div class="seg sm' + (opts.length === 3 && opts[0][1].length < 3 ? ' narrow' : '') + '" role="radiogroup" aria-label="' + esc(label) + '"><span class="thumb"></span>' +
     opts.map(([v, l]) => '<button role="radio" data-set="' + k + '" data-val="' + v + '" aria-checked="' + (String(SET[k]) === String(v)) + '">' + l + '</button>').join('') + '</div></div>';
 }
+const CUT_TXT = { large: 'Seulement les cases bien séparées', normal: 'Recommandé', fine: 'Coupe au plus près, même les cases collées' };
 const QUAL_TXT = { eco: 'Pages plus légères, idéal en 4G', std: 'Net sur l’écran, recommandé', max: 'Au plus près du fichier d’origine, plus lourd' };
 function renderSettings() {
   const v = $('#v-settings');
@@ -702,6 +703,7 @@ function renderSettings() {
     segRow('mode', 'Mode par défaut', [['panel', 'Case par case'], ['page', 'Page entière']]) +
     segRow('dirManga', 'Sens des mangas', [['rtl', '← Manga'], ['ltr', 'BD →']]) +
     segRow('dirComics', 'Sens des comics', [['rtl', '← Manga'], ['ltr', 'BD →']]) +
+    segRow('cut', 'Découpe des cases', [['large', 'Large'], ['normal', 'Normale'], ['fine', 'Fine']], CUT_TXT[SET.cut]) +
     sw('anim', 'Glisser d’une case à l’autre', 'Petite animation entre deux cases') + sw('autoFs', 'Ouvrir en plein écran') + sw('hint', 'Montrer l’aide des gestes') +
     '</div><span class="foot">Le sens se règle aussi série par série, avec le bouton « BD → / ← Manga » sur la page de la série et dans le lecteur.</span></div>';
   const qual = '<div class="group"><h2>Qualité des pages</h2><div class="cell">' + segRow('quality', 'Affichage', [['eco', 'Économe'], ['std', 'Standard'], ['max', 'Maximale']], QUAL_TXT[SET.quality]) + '</div></div>';
@@ -753,6 +755,7 @@ function applyTheme() {
 }
 matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => { if (SET.theme === 'auto') applyTheme(); });
 const NEWS = [
+  ['2.2', 'Découpe des cases bien plus précise : scans avec du grain, papier jauni, cases qui ne sont pas en grille, bulles qui débordent, cases sans cadre. Nouveau réglage « Découpe des cases ».'],
   ['2.1', 'Les comics viennent aussi de Wikipédia : toutes les séries dans la recherche (Spider-Man, Batman…), couvertures de la sélection comics, résumés en français. Meilleur classement Mangas / Comics. Transition plus propre vers les Réglages.'],
   ['2.0', 'Nouvelle appli : Mangas et Comics séparés, Découvrir (tendances et suggestions), Ma liste synchronisée, recherche dans les catalogues, plein écran, réglages complets, thème clair, iPad avec barre latérale repliable.'],
   ['1.3', 'Mises à jour automatiques de l’appli.'],
@@ -874,6 +877,7 @@ document.addEventListener('click', async (e) => {
     if (d.set === 'quality') { applyQuality(); const s = $('#sub-quality'); if (s) s.textContent = QUAL_TXT[val]; }
     if (d.set === 'keep') evict(null).then(paintUsage);
     if (d.set === 'mode') S.mode = val;
+    if (d.set === 'cut') { const s = $('#sub-cut'); if (s) s.textContent = CUT_TXT[val]; }
     return;
   }
   if (d.root) { ROOT = { id: d.root, name: d.name }; ls.set('cpc:root', ROOT); closeSheet(); LIB = null; ls.del('cpc:lib'); indexLib(); toast('Bibliothèque : « ' + d.name + ' »'); refreshLibrary(true); render(); return; }
