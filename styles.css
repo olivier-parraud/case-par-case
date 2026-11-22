@@ -88,7 +88,7 @@ svg { flex: none; }
 /* ---------- Structure ---------- */
 #app { position: fixed; inset: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
 #side { display: none; }
-#main { position: relative; overflow: hidden; view-transition-name: main; }
+#main { position: relative; overflow: hidden; view-transition-name: main; background: var(--bg); }
 .view { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain;
   scrollbar-width: none; }
 .view::-webkit-scrollbar { display: none; }

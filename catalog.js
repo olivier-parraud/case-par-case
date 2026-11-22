@@ -21,7 +21,7 @@ function cached(key, ttlMs, fn) {
 }
 
 /* ---------- AniList ---------- */
-const AL_FIELDS = `id title { romaji english userPreferred } synonyms format countryOfOrigin status volumes genres averageScore
+const AL_FIELDS = `id title { romaji english userPreferred } synonyms format countryOfOrigin status volumes genres averageScore popularity
   startDate { year } coverImage { extraLarge large color } bannerImage description(asHtml: false)
   staff(perPage: 6, sort: [RELEVANCE, ID]) { edges { role node { name { full } } } }`;
 let alQueue = Promise.resolve();
@@ -55,7 +55,7 @@ function alItem(m) {
     who: who.slice(0, 2).join(', '), year: (m.startDate && m.startDate.year) || null,
     cover: (m.coverImage && (m.coverImage.extraLarge || m.coverImage.large)) || '', banner: m.bannerImage || '',
     color: (m.coverImage && m.coverImage.color) || '', c1, c2,
-    sum: clean(m.description), sumLang: 'en', volumes: m.volumes || null, status: m.status || '', genres: (m.genres || []).slice(0, 3), score: m.averageScore || null
+    sum: clean(m.description), sumLang: 'en', volumes: m.volumes || null, status: m.status || '', genres: (m.genres || []).slice(0, 3), score: m.averageScore || null, pop: m.popularity || 0
   };
 }
 function alSearch(q) {
@@ -84,7 +84,7 @@ const volNum = (t) => { const m = String(t || '').match(/(?:t(?:ome)?\.?|vol(?:u
 function gbCover(v) {
   const l = v.imageLinks; if (!l) return '';
   const u = (l.thumbnail || l.smallThumbnail || '').replace(/^http:/, 'https:').replace(/&edge=curl/g, '');
-  return u ? u + '&fife=w480' : '';
+  return u;
 }
 async function gbFetch(q, n) {
   const u = 'https://www.googleapis.com/books/v1/volumes?q=' + encodeURIComponent(q) + '&langRestrict=fr&printType=books&maxResults=' + (n || 40);
@@ -134,6 +134,7 @@ function gbFind(title) {
 // Résumé en français d'un manga (édition française dans Google Books), à défaut le résumé anglais d'AniList
 function frSummary(item) {
   if (item.sumLang === 'fr' && item.sum) return Promise.resolve({ sum: item.sum, lang: 'fr' });
+  if (item.wiki) return cached('wsum:' + item.key, 30 * 864e5, () => wikiExtract(item.wiki)).then((r) => r || { sum: item.sum, lang: item.sumLang });
   return cached('fr:' + item.key, 30 * 864e5, async () => {
     for (const t of [item.title, ...(item.alt || [])].slice(0, 2)) {
       const vols = await gbFetch('intitle:"' + t + '"', 20).catch(() => []);
@@ -142,6 +143,71 @@ function frSummary(item) {
     }
     return null;
   }).then((r) => r || { sum: item.sum, lang: item.sumLang });
+}
+
+/* ---------- Wikipédia (comics : séries, couvertures, titres et résumés français, séries proches) ---------- */
+const COMIC_RE = /comic|graphic novel|limited series|maxiseries|bande dessin|roman graphique|webcomic|fumetti|strip/i;
+const MANGA_RE = /manga|manhwa|manhua|light novel|série de mangas/i;
+const NOT_SERIES_RE = /film|television|tv series|téléfilm|série télévisée|video game|jeu vidéo|soundtrack|episode|épisode|actor|actrice|acteur|character|personnage|superhero|super-héros|toy|album|song|chanson|company|publisher|éditeur|disambiguation|homonymie|novel by|roman de|attraction|wrestler|band\b/i;
+const stripParen = (t) => String(t || '').replace(/\s*\([^)]*\)\s*$/, '').trim();
+async function wiki(lang, params) {
+  const u = 'https://' + lang + '.wikipedia.org/w/api.php?' + new URLSearchParams({ action: 'query', format: 'json', formatversion: '2', origin: '*', ...params });
+  const r = await fetch(u);
+  if (!r.ok) throw new Error('wiki ' + r.status);
+  return r.json();
+}
+const WPROPS = { prop: 'pageimages|description|langlinks', piprop: 'thumbnail', pithumbsize: '500', pilicense: 'any', lllang: 'fr', lllimit: '1' };
+function wikiItem(pg) {
+  const fr = pg.langlinks && pg.langlinks[0] ? (pg.langlinks[0].title || pg.langlinks[0]['*']) : '';
+  const title = stripParen(fr || pg.title), [c1, c2] = hue(title);
+  const y = String(pg.description || '').match(/(19|20)\d\d/);
+  return { key: 'wk:' + norm(stripParen(pg.title)), src: 'wk', type: 'comics', kind: 'Comics', title, alt: [stripParen(pg.title), stripParen(fr)].filter(Boolean),
+    who: '', year: y ? +y[0] : null, cover: (pg.thumbnail && pg.thumbnail.source) || '', c1, c2, sum: '', sumLang: 'fr', desc: pg.description || '',
+    wiki: { en: pg.title, fr: fr || '' } };
+}
+const isComicPage = (pg) => pg && pg.description && COMIC_RE.test(pg.description) && !NOT_SERIES_RE.test(pg.description) && !MANGA_RE.test(pg.description);
+function wikiSearch(q) {
+  return cached('wks:' + norm(q), 3 * 864e5, async () => {
+    const [a, b] = await Promise.all([
+      wiki('en', { generator: 'search', gsrsearch: q + ' comic', gsrlimit: '40', gsrnamespace: '0', ...WPROPS }),
+      wiki('en', { generator: 'prefixsearch', gpssearch: q, gpslimit: '20', ...WPROPS }).catch(() => ({}))
+    ]);
+    const pages = [...((b.query && b.query.pages) || []), ...((a.query && a.query.pages) || []).sort((x, y) => (x.index || 0) - (y.index || 0))];
+    const seen = new Set(), out = [];
+    for (const pg of pages) { if (!isComicPage(pg)) continue; const it = wikiItem(pg); if (seen.has(it.key)) continue; seen.add(it.key); out.push(it); }
+    // Les titres qui contiennent la recherche d'abord
+    const k = norm(q);
+    return out.sort((x, y) => (x.alt.some((t) => norm(t).includes(k)) ? 0 : 1) - (y.alt.some((t) => norm(t).includes(k)) ? 0 : 1)).slice(0, 24);
+  });
+}
+function wikiSimilar(enTitle) {
+  return cached('wkm:' + norm(enTitle), 7 * 864e5, async () => {
+    const d = await wiki('en', { generator: 'search', gsrsearch: 'morelike:' + enTitle, gsrlimit: '30', gsrnamespace: '0', ...WPROPS });
+    return ((d.query && d.query.pages) || []).sort((x, y) => (x.index || 0) - (y.index || 0)).filter(isComicPage).map(wikiItem).filter((x) => x.wiki.en !== enTitle).slice(0, 14);
+  });
+}
+async function wikiExtract(w) {
+  for (const [lang, t] of [['fr', w.fr], ['en', w.en]]) {
+    if (!t) continue;
+    try {
+      const d = await wiki(lang, { prop: 'extracts', exintro: '1', explaintext: '1', exsentences: '6', titles: t, redirects: '1' });
+      const pg = d.query && d.query.pages && d.query.pages[0];
+      if (pg && pg.extract && pg.extract.length > 40) return { sum: clean(pg.extract), lang };
+    } catch (e) {}
+  }
+  return null;
+}
+// Manga ou comics ? Wikipédia le dit dans la description de la série (en anglais, sinon en français)
+async function wikiType(title) {
+  const k = norm(title);
+  for (const lang of ['en', 'fr']) {
+    const d = await wiki(lang, { generator: 'prefixsearch', gpssearch: title, gpslimit: '20', prop: 'description', ...(lang === 'en' ? { prop: 'description|langlinks', lllang: 'fr', lllimit: '1' } : {}) });
+    const pages = ((d.query && d.query.pages) || []).filter((p) => norm(stripParen(p.title)) === k && p.description && !NOT_SERIES_RE.test(p.description));
+    const m = pages.find((p) => MANGA_RE.test(p.description)), c = pages.find((p) => COMIC_RE.test(p.description) && !MANGA_RE.test(p.description));
+    if (m && !c) return { type: 'manga' };
+    if (c && !m) return { type: 'comics', wiki: { en: lang === 'en' ? c.title : '', fr: lang === 'fr' ? c.title : (c.langlinks && c.langlinks[0] ? c.langlinks[0].title : '') } };
+  }
+  return null;
 }
 
 /* ---------- Sélection comics (pas de classement public gratuit des comics : choix Case par Case) ---------- */
@@ -156,14 +222,20 @@ const COMICS_PICKS = [
   { title: 'Watchmen', who: 'Alan Moore, Dave Gibbons', year: 1986, c1: '#f9c74f', c2: '#2d6a4f' }
 ].map((p) => ({ ...p, key: 'gb:' + norm(p.title), src: 'gb', type: 'comics', kind: 'Comics', cover: '', sum: '', sumLang: 'fr', alt: [p.title] }));
 async function comicsPicks() {
-  // Couvertures et résumés français complétés depuis Google Books, au fil de l'eau
+  // Couvertures depuis Wikipédia (et résumés français), à défaut depuis Google Books
   return Promise.all(COMICS_PICKS.map(async (p) => {
-    try { const f = await gbFind(p.title); return f ? { ...p, cover: f.cover || '', sum: f.sum || '', who: p.who || f.who } : p; } catch (e) { return p; }
+    let out = { ...p };
+    try {
+      const w = (await wikiSearch(p.title)).find((x) => norm(x.title) === norm(p.title) || x.alt.some((a) => norm(a) === norm(p.title)));
+      if (w) out = { ...out, cover: w.cover || '', wiki: w.wiki, alt: [...new Set([...p.alt, ...w.alt])] };
+    } catch (e) {}
+    if (!out.cover) { try { const f = await gbFind(p.title); if (f) out = { ...out, cover: f.cover || '', sum: f.sum || '' }; } catch (e) {} }
+    return out;
   }));
 }
 
 /* ---------- Associer les séries de la bibliothèque aux catalogues ---------- */
-let MATCH = ls.get('cpc:match', {}); // seriesId -> { type, alId, who, year, kind, title, at }
+let MATCH = ls.get('cpc:match2', {}); // seriesId -> { type, alId, who, year, kind, title, wiki, at }
 const matching = new Map();
 function matchSeries(s) {
   const m = MATCH[s.id];
@@ -171,17 +243,18 @@ function matchSeries(s) {
   if (matching.has(s.id)) return matching.get(s.id);
   const p = (async () => {
     let res = { type: 'comics', title: s.title, at: Date.now() };
-    try {
-      const list = await alSearch(s.title);
-      const k = norm(s.title);
-      const hit = list.find((x) => x.alt.some((a) => norm(a) === k)) || null;
-      if (hit) res = { type: 'manga', alId: hit.alId, who: hit.who, year: hit.year, kind: hit.kind, title: s.title, at: Date.now() };
-      else {
-        const f = await gbFind(s.title).catch(() => null);
-        if (f) res = { type: 'comics', who: f.who, year: f.year, title: s.title, at: Date.now() };
-      }
-    } catch (e) { matching.delete(s.id); throw e; }
-    MATCH[s.id] = res; ls.set('cpc:match', MATCH);
+    const k = norm(s.title);
+    const w = await wikiType(s.title).catch(() => null);
+    const list = await alSearch(s.title).catch(() => null);
+    const hit = list && list.find((x) => x.alt.some((a) => norm(a) === k));
+    const f = !w && (!hit || hit.pop < 5000) ? await gbFind(s.title).catch(() => null) : null;
+    if (w && w.type === 'comics') res = { type: 'comics', wiki: w.wiki, title: s.title, who: f ? f.who : '', at: Date.now() };
+    else if (w && w.type === 'manga') res = { type: 'manga', alId: hit ? hit.alId : null, who: hit ? hit.who : '', year: hit ? hit.year : null, kind: hit ? hit.kind : 'Manga', title: s.title, at: Date.now() };
+    // Sans Wikipédia : un titre très peu suivi sur AniList qui existe en comics chez Google Books est un comics
+    else if (hit && !(f && hit.pop < 5000)) res = { type: 'manga', alId: hit.alId, who: hit.who, year: hit.year, kind: hit.kind, title: s.title, at: Date.now() };
+    else if (f) res = { type: 'comics', who: f.who, year: f.year, title: s.title, at: Date.now() };
+    else if (!w && !list) { matching.delete(s.id); throw new Error('offline'); }
+    MATCH[s.id] = res; ls.set('cpc:match2', MATCH);
     return res;
   })();
   matching.set(s.id, p);

@@ -478,7 +478,8 @@ function loadDiscover(p) {
     if (base) jobs.push(matchSeries(base).then((m) => (m && m.alId ? alRecs(m.alId) : [])).then((x) => { d.recs = x; d.because = base.title; }).catch(() => {}));
   } else {
     jobs.push(comicsPicks().then((x) => { d.top = x; }));
-    if (base) jobs.push(matchSeries(base).then((m) => (m && m.who ? gbByAuthor(m.who.split(',')[0].trim()) : [])).then((x) => { d.recs = x.filter((r) => norm(r.title) !== norm(base.title)); d.because = base.title; }).catch(() => {}));
+    if (base) jobs.push(matchSeries(base).then((m) => (m && m.wiki && m.wiki.en ? wikiSimilar(m.wiki.en) : m && m.who ? gbByAuthor(m.who.split(',')[0].trim()) : []))
+      .then((x) => { d.recs = x.filter((r) => norm(r.title) !== norm(base.title)); d.because = base.title; }).catch(() => {}));
   }
   Promise.all(jobs).then(() => { d.at = Date.now(); }, () => { d.err = true; })
     .finally(() => { d.loading = false; if (VIEW === 'discover' && DPART === p) renderDiscover(); });
@@ -516,7 +517,7 @@ function renderDiscover() {
     if (recs.length) h += '<section class="block' + rise + '"><div style="display:flex;flex-direction:column;gap:2px"><h2>Parce que tu lis ' + esc(d.because) + '</h2><span class="small">' +
       (p === 'manga' ? 'Recommandé par les lecteurs qui l’ont aimé' : 'Des mêmes auteurs') + '</span></div><div class="row">' +
       recs.slice(0, 12).map((it) => '<div class="tile w110"><button class="press" data-item="' + esc(it.key) + '" aria-label="' + esc(it.title) + '">' + catCov(it) + '</button><span class="t">' + esc(it.title) + '</span>' + wishBtn(it, 'soft') + '</div>').join('') + '</div></section>';
-    h += '<span class="small">Tendances mises à jour depuis les catalogues en ligne (AniList pour les mangas, Google Books pour les comics). « Ajouter » met la série dans Ma liste, sans rien télécharger.</span>';
+    h += '<span class="small">Tendances mises à jour depuis les catalogues en ligne (AniList pour les mangas, Wikipédia et Google Books pour les comics). « Ajouter » met la série dans Ma liste, sans rien télécharger.</span>';
   }
   h += '</div>';
   v.innerHTML = h; paintSegs(v); v.scrollTop = keepScroll;
@@ -555,13 +556,19 @@ async function runSearch() {
   const jobs = [];
   if (SR.kind !== 'comics') jobs.push(alSearch(q).catch(() => []));
   else jobs.push(Promise.resolve([]));
-  if (SR.kind !== 'manga') jobs.push(gbSearch(q).catch(() => []));
+  if (SR.kind !== 'manga') jobs.push(Promise.all([wikiSearch(q).catch(() => []), gbSearch(q).catch(() => [])]).then(([w, g]) => {
+    // Wikipédia (toutes les séries, couvertures) puis les éditions françaises de Google Books qui manquent
+    const out = [...w];
+    for (const x of g) if (!out.some((o) => o.alt.some((a) => norm(a) === norm(x.title)))) out.push(x);
+    return out;
+  }));
   else jobs.push(Promise.resolve([]));
   const [a, b] = await Promise.all(jobs);
   if (tok !== SR.tok) return;
   // Ce que tu possèdes passe en premier
   const all = [...a.slice(0, 12), ...b.slice(0, 12)].map(keep);
-  all.sort((x, y) => (ownedSid(y) ? 1 : 0) - (ownedSid(x) ? 1 : 0));
+  const qk = norm(q), score = (x) => (ownedSid(x) ? 0 : 2) + ((x.alt || [x.title]).some((t) => norm(t).includes(qk)) ? 0 : 1);
+  all.sort((x, y) => score(x) - score(y));
   SR.res = all; SR.loading = false;
   if (wide() && all.length && (!SR.sel || !all.some((x) => x.key === SR.sel))) SR.sel = all[0].key;
   paintSearch();
@@ -584,7 +591,7 @@ function paintSearch() {
   } else if (SR.loading && !SR.res) left = '<div class="list">' + Array.from({ length: 5 }, () => '<div class="item"><div style="display:grid;grid-template-columns:48px 1fr;gap:12px;align-items:center"><div class="skel" style="aspect-ratio:2/3;border-radius:6px"></div><div style="display:flex;flex-direction:column;gap:6px"><div class="skel" style="height:14px;width:60%;border-radius:6px"></div><div class="skel" style="height:11px;width:80%;border-radius:6px"></div></div></div></div>').join('') + '</div>';
   else if (!navigator.onLine) left = '<div class="empty center">Il faut du réseau pour chercher dans les catalogues.</div>';
   else if (SR.res && !SR.res.length) left = '<div class="empty center">Aucun résultat pour « ' + esc(SR.q.trim()) + ' ».</div>';
-  else if (SR.res) left = '<div class="list rise">' + SR.res.map(resultRow).join('') + '</div><span class="small">Fiches et couvertures : AniList pour les mangas, Google Books pour les comics. Une série ajoutée va dans « Ma liste » ; elle passe dans ta bibliothèque dès que ses tomes sont dans ton Drive.</span>';
+  else if (SR.res) left = '<div class="list rise">' + SR.res.map(resultRow).join('') + '</div><span class="small">Fiches et couvertures : AniList pour les mangas, Wikipédia et Google Books pour les comics. Une série ajoutée va dans « Ma liste » ; elle passe dans ta bibliothèque dès que ses tomes sont dans ton Drive.</span>';
   if (wide()) {
     const it = SR.sel && ITEMS.get(SR.sel);
     box.innerHTML = '<div class="stick" style="gap:12px">' + left + '</div><div id="sdetail">' + (it && SR.res ? ficheHTML(it) : '<div class="empty center" style="padding-top:120px">' + (SR.q.trim() ? '' : 'Cherche un manga ou un comics : sa fiche s’affichera ici.') + '</div>') + '</div>';
@@ -708,7 +715,7 @@ function renderSettings() {
   const look = '<div class="group"><h2>Apparence</h2><div class="cell">' + segRow('theme', 'Thème', [['dark', 'Sombre'], ['light', 'Clair'], ['auto', 'Auto']]) +
     segRow('paper', 'Fond de lecture', [['black', 'Noir'], ['grey', 'Gris'], ['paper', 'Papier']]) + '</div></div>';
   const about = '<div class="group"><h2>À propos</h2><div class="cell"><div class="it"><span class="lb"><span>Version</span></span><span class="v">' + VERSION + '</span></div>' +
-    '<div class="it"><span class="lb"><span>Catalogues</span></span><span class="v">AniList · Google Books</span></div>' +
+    '<div class="it"><span class="lb"><span>Catalogues</span></span><span class="v">AniList · Wikipédia · Google Books</span></div>' +
     '<button class="it act" data-act="news"><span class="lb"><span>Quoi de neuf</span></span>' + I.chev + '</button>' +
     '<a class="it act" href="https://drive.google.com/drive/folders/' + esc(ROOT.id) + '" target="_blank" rel="noopener"><span class="lb"><span>Ouvrir le dossier dans Google Drive</span></span>' + I.chev + '</a>' +
     (IOS && !STANDALONE ? '<div class="it"><span class="lb"><span>Installer l’appli</span><small>Partager › Sur l’écran d’accueil</small></span></div>' : '') + '</div></div>';
@@ -746,6 +753,7 @@ function applyTheme() {
 }
 matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => { if (SET.theme === 'auto') applyTheme(); });
 const NEWS = [
+  ['2.1', 'Les comics viennent aussi de Wikipédia : toutes les séries dans la recherche (Spider-Man, Batman…), couvertures de la sélection comics, résumés en français. Meilleur classement Mangas / Comics. Transition plus propre vers les Réglages.'],
   ['2.0', 'Nouvelle appli : Mangas et Comics séparés, Découvrir (tendances et suggestions), Ma liste synchronisée, recherche dans les catalogues, plein écran, réglages complets, thème clair, iPad avec barre latérale repliable.'],
   ['1.3', 'Mises à jour automatiques de l’appli.'],
   ['1.2', 'Couvertures de chaque tome, noms de tomes propres, lecture des gros PDF sans tout télécharger.'],
@@ -841,7 +849,7 @@ document.addEventListener('click', async (e) => {
   if (d.wish) {
     const it = ITEMS.get(d.wish) || WISH[d.wish]; if (!it) return;
     const on = !wishOn(it.key);
-    setWish({ key: it.key, title: it.title, type: it.type, kind: it.kind, who: it.who, year: it.year, cover: it.cover, c1: it.c1, c2: it.c2, alId: it.alId || null, alt: (it.alt || []).slice(0, 4), sum: (it.sum || '').slice(0, 600), sumLang: it.sumLang }, on);
+    setWish({ key: it.key, title: it.title, type: it.type, kind: it.kind, who: it.who, year: it.year, cover: it.cover, c1: it.c1, c2: it.c2, alId: it.alId || null, wiki: it.wiki || null, alt: (it.alt || []).slice(0, 4), sum: (it.sum || '').slice(0, 600), sumLang: it.sumLang }, on);
     if (navigator.vibrate) try { navigator.vibrate(8); } catch (err) {}
     if (d.style === 'fiche') { b.className = 'btn ' + (on ? '' : 'primary') + ' press'; b.textContent = on ? '✓ Dans ma liste' : '+ Ajouter à ma liste'; }
     refreshWishButtons(it.key);
