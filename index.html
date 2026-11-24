@@ -22,7 +22,7 @@
     if (localStorage.getItem('cpc:rail') === 'true') document.documentElement.classList.add('rail-start');
   } catch (e) {} })();
 </script>
-<link rel="stylesheet" href="styles.css?v=12">
+<link rel="stylesheet" href="styles.css?v=13">
 </head>
 <body>
 
@@ -43,13 +43,20 @@
 
 <section id="reader" hidden aria-label="Lecture">
   <div id="stage">
-    <div id="flip"><div id="layer"><canvas id="blank" width="10" height="10"></canvas><canvas id="sharp" width="1" height="1"></canvas><div id="hole"></div></div></div>
-    <div class="tapzones" aria-hidden="true"><div>Précédente</div><div>Commandes</div><div>Suivante</div></div>
+    <div id="flip"><div id="pz"><div id="layer"><canvas id="blank" width="10" height="10"></canvas><canvas id="sharp" width="1" height="1"></canvas><div id="hole"></div></div></div></div>
+    <div class="tapzones" aria-hidden="true"><div class="tz-top">Commandes</div><div class="tz-l">‹ Précédente</div><div class="tz-r">Suivante ›</div><div class="tz-up">Glisse vers le haut : toutes les pages</div></div>
   </div>
   <div id="rload" hidden><span class="spin"></span><span></span></div>
   <div id="mini" aria-hidden="true"><canvas width="1" height="1"></canvas><i></i></div>
   <button id="exitfs" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>Quitter le plein écran</button>
   <div id="rhint" role="status"></div>
+  <div id="thumbs" hidden>
+    <div class="tscrim"></div>
+    <div class="tpanel" role="dialog" aria-label="Toutes les pages">
+      <div class="thead-wrap"><div class="grab"></div><div class="thead"><div><b id="tcount"></b><small id="tsub"></small></div><button id="tclose">OK</button></div></div>
+      <div id="tgrid"></div>
+    </div>
+  </div>
   <button id="rclose" data-act="back" aria-label="Quitter la lecture" title="Quitter la lecture">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>
   </button>
@@ -59,6 +66,9 @@
       </button>
     <div class="ti"><b id="rTitle"></b><small id="rSeries"></small></div>
     <div class="tools">
+      <button class="ricon" id="capBtn" aria-label="Faire une capture" title="Faire une capture">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2.3l1.4-2h5.6l1.4 2h2.3A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="13" r="3.4"/></svg>
+      </button>
       <div class="seg sm wide-only" id="rModeTop" role="group" aria-label="Mode de lecture"><span class="thumb"></span><button data-mode="panel">Case par case</button><button data-mode="page">Page entière</button></div>
       <span class="rspace" aria-hidden="true"></span>
     </div>
@@ -70,7 +80,10 @@
       <span class="lab" id="count">Case 1 / 1</span>
     </div>
     <div class="ctl">
-      <div class="seg mode phone-only" id="rMode" role="group" aria-label="Mode de lecture"><span class="thumb"></span><button data-mode="panel">Case par case</button><button data-mode="page">Page entière</button></div>
+      <button class="ricon tbtn" id="thumbBtn" aria-label="Toutes les pages" title="Toutes les pages">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></svg>
+      </button>
+      <div class="seg mode phone-only" id="rMode" role="group" aria-label="Mode de lecture"><span class="thumb"></span><button data-mode="panel" aria-label="Case par case">Cases</button><button data-mode="page" aria-label="Page entière">Page</button></div>
       <div class="seg dir" id="rDir" role="group" aria-label="Sens de lecture"><span class="thumb"></span><button data-dir="ltr">BD →</button><button data-dir="rtl">← Manga</button></div>
     </div>
   </footer>
@@ -78,12 +91,12 @@
 
 <div id="toast" role="status" aria-live="polite"></div>
 
-<script src="vendor/pdf.min.js?v=12"></script>
-<script src="vendor/jszip.min.js?v=12"></script>
-<script src="core.js?v=12"></script>
-<script src="panels.js?v=12"></script>
-<script src="reader.js?v=12"></script>
-<script src="catalog.js?v=12"></script>
-<script src="ui.js?v=12"></script>
+<script src="vendor/pdf.min.js?v=13"></script>
+<script src="vendor/jszip.min.js?v=13"></script>
+<script src="core.js?v=13"></script>
+<script src="panels.js?v=13"></script>
+<script src="reader.js?v=13"></script>
+<script src="catalog.js?v=13"></script>
+<script src="ui.js?v=13"></script>
 </body>
 </html>

@@ -755,6 +755,7 @@ function applyTheme() {
 }
 matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => { if (SET.theme === 'auto') applyTheme(); });
 const NEWS = [
+  ['2.6', 'Lecteur : toucher la moitié droite pour avancer et la moitié gauche pour reculer (cases et pages), pincer pour zoomer, glisser vers le haut pour voir toutes les pages, bouton capture.'],
   ['2.5', 'La croix pour quitter la lecture passe en haut à droite, un peu plus bas ; le plein écran passe à gauche.'],
   ['2.4', 'Une croix dans le lecteur, toujours visible, pour quitter la lecture.'],
   ['2.3', 'Clavier : flèche droite et flèche bas avancent toujours à la case suivante, dans le sens de lecture choisi (BD ou manga).'],
@@ -895,6 +896,7 @@ document.addEventListener('click', async (e) => {
     case 'search': closeSheet(true); go({ v: 'search' }); break;
     case 'clearq': { const q = $('#q'); q.value = SR.q = ''; b.hidden = true; SR.res = null; paintSearch(); q.focus(); break; }
     case 'closesheet': closeSheet(); break;
+    case 'capshare': shareCapture(); break;
     case 'refresh': if (!navigator.onLine) toast('Pas de réseau.'); else { await syncProgress(); refreshLibrary(true); } break;
     case 'retrydisc': DISC[DPART] = {}; renderDiscover(); break;
     case 'folder': openFolders(); break;
